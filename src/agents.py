@@ -30,21 +30,26 @@ class PlotGenerator:
             memory_key="chat_history", return_messages=True
         )
 
-
     def setup_llm(self, model):
         key = os.getenv("OPENAI_API_KEY")
         self.llm = ChatOpenAI(model=model, openai_api_key=key)
 
-    def generate_plot(
-        self, question: str, sql_result: pd.DataFrame, sql_query: str, explanation: str
+    def generate_plotting_code(
+        self,
+        question: str,
+        df: pd.DataFrame,
+        query: str,
+        explanation: str,
+        previous_code: str | None,
+        previous_error: str | None,
     ) -> dict:
         prompt = f"""
         You are a data visualization expert. Given the following information:
         
         User question: {question}
-        SQL query: {sql_query}
+        SQL query: {query}
         Explanation: {explanation}
-        DataFrame: {sql_result.to_string()}
+        DataFrame: {df.to_string()}
         
         Your task is to create an appropriate Altair visualization for this data. Follow these steps:
         - Redefine the 'df' object explicitely. 
@@ -58,9 +63,53 @@ class PlotGenerator:
         """
 
         # Convert DataFrame to dict for JSON serialization
-
-        response = self.llm.invoke(prompt)
+        if previous_error is not None:
+            response = self.llm.invoke(
+                prompt
+                + f"\n The code ```{previous_code}``` raised ```{previous_error}```. Please correct yourself. New code:\n"
+            )
+        else:
+            response = self.llm.invoke(prompt)
         return extract_python_code(response.content)
+
+    def generate_plot(self, question, df, query, explanation, max_attempts=3):
+        attempt = 0
+        previous_code = None
+        previous_error = None
+        chart = None
+        while attempt <= max_attempts:
+            attempt += 1
+            plotting_code = self.generate_plotting_code(
+                question=question,
+                df=df,
+                query=query,
+                explanation=explanation,
+                previous_code=previous_code,
+                previous_error=previous_error,
+            )
+            try:
+                exec_globals = {}
+                exec(plotting_code, exec_globals)
+                chart = exec_globals.get("chart", None)
+                return {
+                    "chart": chart,
+                    "code": plotting_code,
+                    "error": previous_error,
+                    "attempts": attempt,
+                }
+            except Exception as e:
+                attempt += 1
+                previous_error = str(
+                    e
+                )  # potentiellement réduire l'erreur à son titre pour éviter de surcharger le prompt
+                previous_code = plotting_code
+
+        return {
+            "chart": chart,
+            "code": plotting_code,
+            "error": previous_error,
+            "attempts": attempt,
+        }
 
 
 class DBDescriptor:
@@ -229,7 +278,7 @@ class SQLAgent:
                     )
                     return {
                         "query": query,
-                        "result": results,
+                        "results": results,
                         "answer": answer,
                         "attempts": attempt,
                     }
@@ -251,7 +300,7 @@ class SQLAgent:
                         )
                         return {
                             "query": query,
-                            "result": results,
+                            "results": results,
                             "answer": answer,
                             "attempts": attempt,
                         }
@@ -274,7 +323,7 @@ class SQLAgent:
                     )
                     return {
                         "query": query,
-                        "result": None,
+                        "results": None,
                         "answer": answer,
                         "attempts": attempt,
                     }
@@ -291,7 +340,7 @@ class SQLAgent:
         )
         return {
             "query": query,
-            "result": None,
+            "results": None,
             "answer": answer,
             "attempts": attempt,
         }
