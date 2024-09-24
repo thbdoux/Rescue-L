@@ -9,6 +9,12 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 
+def initialize_ss_variable(vars: list[str]):
+    for var in vars:
+        if var not in st.session_state:
+            st.session_state[var] = None
+
+
 def main():
     st.title("SQL Agent")
 
@@ -44,68 +50,112 @@ def db_page(db_url):
 def main_page(db_url):
     agent = SQLAgent(db_url=db_url, model="gpt-4o-mini")
     plot_agent = PlotGenerator(model="gpt-4o-mini")
-    question = st.text_input(
+    st.session_state.question = st.text_input(
         "Enter your question about the database:",
-        value="""
-What is the evolution of the sales over the years, for men and women sales separately?
-""",
+        value="",
     )
-
-    if st.button("Run Query", use_container_width=True):
+    if "previous_question" not in st.session_state:
+        st.session_state.previous_question = ""
+    initialize_ss_variable(
+        vars=[
+            "explanation",
+            "df",
+            "query",
+            "attempts",
+            "chart",
+            "plotting_code",
+            "plotting_error",
+            "plotting_attempts",
+        ]
+    )
+    btcol1, btcol2, btcol3 = st.columns(3)
+    run_query = btcol1.button(
+        "Run Query", disabled=st.session_state.question == "", use_container_width=True
+    )
+    plot = btcol2.button(
+        "Generate a plot",
+        use_container_width=True,
+        # disabled=(st.session_state.df is None),
+    )
+    add_to_history = btcol3.button(
+        "Add to history",
+        use_container_width=True,
+        disabled=(st.session_state.explanation is None),
+    )
+    if (
+        run_query or st.session_state.question != st.session_state.previous_question
+    ) and not (st.session_state.question == ""):
         with st.spinner("Processing your question..."):
-            results = agent.process(question=question, max_attempts=5)
-            df, query, explanation, attempts = (
+            results = agent.process(question=st.session_state.question, max_attempts=5)
+
+            (
+                st.session_state.df,
+                st.session_state.query,
+                st.session_state.explanation,
+                st.session_state.attempts,
+            ) = (
                 results["results"],
                 results["query"],
                 results["answer"],
                 results["attempts"],
             )
+            st.session_state.chart = None
+        st.session_state.previous_question = st.session_state.question
 
-            if query is not None:
-                with st.expander("SQL Query", expanded=True):
-                    st.code(query)
+    if st.session_state.query is not None:
+        with st.expander("SQL Query", expanded=True):
+            st.code(st.session_state.query)
 
-            with st.expander("Explanation", expanded=True):
-                st.warning(explanation)
+    if st.session_state.explanation is not None:
+        with st.expander("Explanation", expanded=True):
+            st.warning(st.session_state.explanation)
 
-            if df is not None:
+    if st.session_state.df is not None:
+
+        with st.expander("Query Results", expanded=True):
+            col1, col2 = st.columns(2)
+            col1.dataframe(st.session_state.df)
+        if plot:
+            with st.spinner("Generating a plot..."):
                 plotting_results = plot_agent.generate_plot(
-                    question=question,
-                    df=df,
-                    query=query,
-                    explanation=explanation,
-                    max_attempts=5,
+                    question=st.session_state.question,
+                    df=st.session_state.df,
+                    query=st.session_state.query,
+                    explanation=st.session_state.explanation,
+                    max_attempts=2,
                 )
-                with st.expander("Query Results", expanded=True):
-                    col1, col2 = st.columns(2)
-                    col1.dataframe(df, hide_index=True)
-                    if plotting_results["chart"] is not None:
-                        # st.error(
-                        #     f"Plotted after {plotting_results['attempts']} attempts"
-                        # )
-                        col2.altair_chart(
-                            plotting_results["chart"], use_container_width=True
-                        )
-                    else:
-                        st.code(plotting_results["code"])
+                (
+                    st.session_state.chart,
+                    st.session_state.plotting_code,
+                    st.session_state.plotting_error,
+                    st.session_state.plotting_attempts,
+                ) = (
+                    plotting_results["chart"],
+                    plotting_results["error"],
+                    plotting_results["code"],
+                    plotting_results["attempts"],
+                )
 
-            # st.error(f"Result reached after {results['attempts']+1} attempts.")
+        if st.session_state.chart is not None:
+            col2.altair_chart(st.session_state.chart, use_container_width=True)
+            # st.code(st.session_state.plotting_code)
 
-            # Add to history
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.history.append(
-                {
-                    "timestamp": timestamp,
-                    "question": question,
-                    "sql_query": query,
-                    "results": df,
-                    "chart": plotting_results["chart"],
-                    "answer": explanation,
-                    "attempts": attempts + 1,
-                }
-            )
+    if add_to_history:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state.history.append(
+            {
+                "timestamp": timestamp,
+                "question": st.session_state.question,
+                "sql_query": st.session_state.query,
+                "results": st.session_state.df,
+                "chart": st.session_state.chart,
+                "answer": st.session_state.explanation,
+                "attempts": st.session_state.attempts,
+                "plotting_attempts": st.session_state.plotting_attempts,
+            }
+        )
 
-            st.success("Results added to history!")
+        st.success("Results added to history!")
 
 
 def history_page():

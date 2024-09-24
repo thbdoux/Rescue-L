@@ -52,7 +52,7 @@ class PlotGenerator:
         DataFrame: {df.to_string()}
         
         Your task is to create an appropriate Altair visualization for this data. Follow these steps:
-        - Redefine the 'df' object explicitely. 
+        - Assume 'df' is already defined.
         - Analyze the data and the user's question to determine the most suitable chart type.
         - Write Python code using Altair to create the visualization.
         - Make sure to handle potential errors, such as column names with spaces.
@@ -88,7 +88,7 @@ class PlotGenerator:
                 previous_error=previous_error,
             )
             try:
-                exec_globals = {}
+                exec_globals = {"df": df}
                 exec(plotting_code, exec_globals)
                 chart = exec_globals.get("chart", None)
                 return {
@@ -259,6 +259,7 @@ class SQLAgent:
         queries = []
         ask_the_dev = question
         while attempt < max_attempts:
+            attempt += 1
             try:
                 query = extract_sql_query(
                     self.developer_chain.invoke({"question": ask_the_dev})
@@ -273,7 +274,11 @@ class SQLAgent:
                             "user_question": question,
                             "sql_query": query,
                             "table_info": self.db.table_info,
-                            "query_results": results.to_string(),
+                            "query_results": (
+                                results.sample(20).to_string()
+                                if len(results) >= 20
+                                else results.to_string()
+                            ),
                         }
                     )
                     return {
@@ -283,8 +288,6 @@ class SQLAgent:
                         "attempts": attempt,
                     }
                 else:
-                    # reboucler tant qu'il trouve pas de résultat. Reformuler question?
-                    attempt += 1
                     if attempt <= max_attempts:
                         ask_the_dev = f"""Your previous queries 
                         ({", ".join(f"```{item}```" for item in queries)}) returned nothing after {attempt+1} attempts,
