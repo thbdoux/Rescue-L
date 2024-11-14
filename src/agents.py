@@ -372,14 +372,14 @@ class SQLAgent:
                     """You are a data analyst who generates insightful KPIs about databases.
             Given a database schema, generate 10 relevant KPIs from a {theme} point of view and context (deep dive from a previous KPI): {context} , that would help someone 
             understand the data better. For example, if you want a sales POV, consider :
-            Total Revenue, 
-            Profit, 
-            Margin, 
+            Total Revenue (current year), 
+            Profit (current year), 
+            Margin (current year), 
             Sales Growth Rate (from one period to the next), 
             Average Order Value (Average amount spent per transaction),
             Number of sales by the top 10 best salespersons.
 
-            The first questions are the most important ones. 
+            The first questions are the most important ones. Precise year dates when you can.
             You must be sure to find relevant data according to the db schema. \n
             Format your response as : {format_instructions}""",
                 ),

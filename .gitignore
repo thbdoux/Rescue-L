@@ -2,3 +2,4 @@ env/
 *pycache*
 .env
 *.ipynb
+experimental.ipynb
